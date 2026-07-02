@@ -71,6 +71,89 @@ describe("OpenAPI normalization", () => {
     expect(spec.operations[0]?.requestContentType).toBe("application/x-www-form-urlencoded");
     expect(spec.operations[0]?.auth?.apiKey).toEqual({ name: "api_key", in: "query" });
   });
+
+  it("normalizes an OpenAPI 3.1 social API with header auth", () => {
+    const spec = normalizeOpenApi({
+      openapi: "3.1.0",
+      info: {
+        title: "Xquik API",
+        version: "1.0"
+      },
+      servers: [{ url: "https://xquik.com" }],
+      security: [{ apiKey: [] }],
+      components: {
+        securitySchemes: {
+          apiKey: {
+            type: "apiKey",
+            name: "X-API-Key",
+            in: "header"
+          }
+        },
+        schemas: {
+          CreateTweetRequest: {
+            type: "object",
+            required: ["text"],
+            properties: {
+              text: { type: "string" }
+            }
+          }
+        }
+      },
+      paths: {
+        "/api/v1/x/tweets/search": {
+          get: {
+            operationId: "searchTweets",
+            tags: ["X"],
+            summary: "Search tweets",
+            parameters: [
+              { name: "query", in: "query", required: true, schema: { type: "string" } },
+              { name: "maxResults", in: "query", schema: { type: "integer" } }
+            ],
+            responses: {
+              "200": {
+                description: "Tweet search results"
+              }
+            }
+          }
+        },
+        "/api/v1/x/tweets": {
+          post: {
+            operationId: "createTweet",
+            tags: ["X"],
+            summary: "Create a tweet",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/CreateTweetRequest" }
+                }
+              }
+            },
+            responses: {
+              "200": {
+                description: "Created tweet"
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const search = spec.operations.find((op) => op.operationId === "searchTweets");
+    const create = spec.operations.find((op) => op.operationId === "createTweet");
+
+    expect(spec.defaultServer).toBe("https://xquik.com");
+    expect(search?.groupName).toBe("x");
+    expect(search?.commandName).toBe("search-tweets");
+    expect(search?.parameters.map((param) => `${param.in}:${param.cliName}:${param.required}`)).toEqual([
+      "query:max-results:false",
+      "query:query:true"
+    ]);
+    expect(search?.auth?.apiKey).toEqual({ name: "X-API-Key", in: "header" });
+    expect(create?.hasBody).toBe(true);
+    expect(create?.requestContentType).toBe("application/json");
+    expect(create?.bodySchemaHint).toBe("CreateTweetRequest");
+  });
 });
 
 describe("Generated CLI", () => {
